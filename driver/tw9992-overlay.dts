@@ -1,0 +1,76 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// Definitions for Renesas TW9992 video to CSI2 bridge on VC I2C bus
+/dts-v1/;
+/plugin/;
+
+/{
+	compatible = "brcm,bcm2835";
+
+	fragment@0 {
+		target = <&i2c_csi_dsi>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			tw9992: tw9992@21 {
+				compatible = "tw9992";
+				reg = <0x44>;
+				status = "okay";
+				clock-frequency = <24000000>;
+				port {
+					tw9992_0: endpoint {
+						remote-endpoint = <&csi1_ep>;
+						clock-lanes = <0>;
+						data-lanes = <1>;
+						link-frequencies =
+							/bits/ 64 <297000000>;
+
+						mclk-frequency = <12000000>;
+                        clock-noncontinuous;
+					};
+				};
+			};
+		};
+	};
+	fragment@1 {
+		target = <&csi1>;
+		__overlay__ {
+			status = "okay";
+
+			port {
+				csi1_ep: endpoint {
+					remote-endpoint = <&tw9992_0>;
+					data-lanes = <1>;
+					clock-lanes = <0>;
+                    clock-noncontinuous;
+				};
+			};
+		};
+	};
+	fragment@2 {
+		target = <&i2c0if>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	fragment@3 {
+		target = <&i2c0mux>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	fragment@4 {
+		target = <&csi1>;
+		__dormant__ {
+			brcm,media-controller;
+		};
+	};
+
+	__overrides__ {
+		addr =			<&tw9992>,"reg:0";
+		media-controller = <0>,"=4";
+	};
+};
