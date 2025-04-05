@@ -130,7 +130,12 @@
 #define TW9992_REG_ALNSTCNT_L  0x7C /* Active Line Start count Low */
 #define TW9992_REG_FRMENDCNT   0x7D /* Frame-End count */
 #define TW9992_REG_FRMENDCNT_L 0x7E /* Frame-End count Low */
-// TODO 0x7F-0xF5
+// TODO 0x7F
+#define TW9992_REG_VIRT_CH_NBR 0x7F /* VIRTUAL CHANNEL NUMBERS */
+#define TW9992_REG_WORD_CNT    0x80 /* WORD_COUNT IN LONG PACKET */
+#define TW9992_REG_WORD_CNT_L  0x81 /* WORD_COUNT IN LONG PACKET Low */
+// TODO 0x82-0xF5
+
 #define TW9992_REG_MIPI_AN_CTL 0xA2 /* MIPI ANALOG CTRL MISC */
 
 #define TW9992_REG_ACACNT_L    0xC0 /* ACA Control */
@@ -198,6 +203,18 @@
 #define TW9992_INPUT_DIFF_CVBS_AIN5_AIN6 0x0a
 #define TW9992_INPUT_DIFF_CVBS_AIN7_AIN8 0x0b
 
+
+#define TW9992_MAX_WIDTH 720
+#define TW9992_MAX_HEIGHT 576 // I don't know
+
+#define TW9992_HDELAY 0x28
+#define TW9992_VDELAY 0x0e
+
+#define TW9992_CROP_TOP 0
+#define TW9992_CROP_LEFT 0
+#define TW9992_CROP_WIDTH 672 // Must be dividable by 16
+#define TW9992_CROP_HEIGHT 576
+
 #if 0
 // Stolen from other old tw9992 driver
 #define TW9_PDN_PORT 4
@@ -264,8 +281,8 @@ MODULE_PARM_DESC(dbg_input, "Input number (0-31)");
 
 static const struct v4l2_mbus_framefmt tw9992_csi2_default_fmt = {
     .code = MEDIA_BUS_FMT_UYVY8_1X16,
-    .width = 720,
-    .height = 576,
+    .width = TW9992_CROP_WIDTH,
+    .height = TW9992_CROP_HEIGHT,
     .colorspace = V4L2_COLORSPACE_SMPTE170M, //V4L2_COLORSPACE_SRGB,
     .ycbcr_enc = V4L2_MAP_YCBCR_ENC_DEFAULT(V4L2_COLORSPACE_SMPTE170M),
     .quantization = V4L2_QUANTIZATION_FULL_RANGE,
@@ -275,8 +292,8 @@ static const struct v4l2_mbus_framefmt tw9992_csi2_default_fmt = {
 
 static const struct v4l2_mbus_framefmt tw9992_csi2_rgb_fmt = {
     .code = MEDIA_BUS_FMT_RGB565_2X8_LE, // MEDIA_BUS_FMT_RGB565_1X16 does not work with unicam
-    .width = 720,
-    .height = 576,
+    .width = TW9992_CROP_WIDTH,
+    .height = TW9992_CROP_HEIGHT,
     .colorspace = V4L2_COLORSPACE_SRGB,
     .ycbcr_enc = V4L2_MAP_YCBCR_ENC_DEFAULT(V4L2_COLORSPACE_SRGB),
     .quantization = V4L2_QUANTIZATION_FULL_RANGE,
@@ -617,91 +634,90 @@ static int tw9992_s_power(struct v4l2_subdev* sd, int on) {
     return ret;
 }
 
-static int adv76xx_log_status(struct v4l2_subdev *sd)
-{
+static int tw9992_log_status(struct v4l2_subdev* sd) {
     struct tw9992_state* state = to_state(sd);
-	//struct v4l2_dv_timings timings;
-	//int ret;
+    //struct v4l2_dv_timings timings;
+    //int ret;
 
-	v4l2_info(sd, "-----Chip status-----\n");
-	v4l2_info(sd, "Chip power: %s\n", state->powered ? "off" : "on");
+    v4l2_info(sd, "-----Chip status-----\n");
+    v4l2_info(sd, "Chip power: %s\n", state->powered ? "off" : "on");
 
-	v4l2_info(sd, "-----Signal status-----\n");
+    v4l2_info(sd, "-----Signal status-----\n");
 
     int status1 = tw9992_read(state, TW9992_REG_STATUS1);
     int status2 = tw9992_read(state, TW9992_REG_SDT);
     v4l2_std_id std = tw9992_std_to_v4l2(status1, status2);
 
 
-    #if 0
-    // Check short circuit status
-	cable_det = info->read_cable_det(sd);
-	v4l2_info(sd, "Cable detected (+5V power) port A: %s, B: %s, C: %s, D: %s\n",
-			((cable_det & 0x01) ? "Yes" : "No"),
-			((cable_det & 0x02) ? "Yes" : "No"),
-			((cable_det & 0x04) ? "Yes" : "No"),
-			((cable_det & 0x08) ? "Yes" : "No"));
-    #endif
-	v4l2_info(sd, "Composite signal detected: %s\n",
-        (status1 & TW9992_VDLOSS) ? "false" : "true");
-        // TODO hlock vlock...
 #if 0
-	v4l2_info(sd, "TMDS signal locked: %s\n",
-			no_lock_tmds(sd) ? "false" : "true");
-    v4l2_info(sd, "SSPD locked: %s\n", no_lock_sspd(sd) ? "false" : "true");
-	v4l2_info(sd, "STDI locked: %s\n", no_lock_stdi(sd) ? "false" : "true");
-	v4l2_info(sd, "CP locked: %s\n", no_lock_cp(sd) ? "false" : "true");
-	v4l2_info(sd, "CP free run: %s\n",
-			(in_free_run(sd)) ? "on" : "off");
-	v4l2_info(sd, "Prim-mode = 0x%x, video std = 0x%x, v_freq = 0x%x\n",
-			io_read(sd, 0x01) & 0x0f, io_read(sd, 0x00) & 0x3f,
-			(io_read(sd, 0x01) & 0x70) >> 4);
+    // Check short circuit status
+    cable_det = info->read_cable_det(sd);
+    v4l2_info(sd, "Cable detected (+5V power) port A: %s, B: %s, C: %s, D: %s\n",
+        ((cable_det & 0x01) ? "Yes" : "No"),
+        ((cable_det & 0x02) ? "Yes" : "No"),
+        ((cable_det & 0x04) ? "Yes" : "No"),
+        ((cable_det & 0x08) ? "Yes" : "No"));
 #endif
-        static const char *s = "UNKNOWN";
-        switch (std) {
-            case V4L2_STD_NTSC: s= "NTSC";
-            break;
-            case V4L2_STD_NTSC_443: s= "NTSC443";
-            break;
-            case V4L2_STD_PAL_M: s= "PAL_M";
-            break;
-            case V4L2_STD_PAL_60: s= "PAL_60";
-            break;
-            case V4L2_STD_PAL: s= "PAL";
-            break;
-            case V4L2_STD_SECAM: s= "SECAM";
-            break;
-            case V4L2_STD_PAL_Nc: s= "PAL_CN";
-            break;
-        }
-        v4l2_info(sd, "Composite signal standard: %s\n", s);
+    v4l2_info(sd, "Composite signal detected: %s\n",
+        (status1 & TW9992_VDLOSS) ? "false" : "true");
+    // TODO hlock vlock...
+#if 0
+    v4l2_info(sd, "TMDS signal locked: %s\n",
+        no_lock_tmds(sd) ? "false" : "true");
+    v4l2_info(sd, "SSPD locked: %s\n", no_lock_sspd(sd) ? "false" : "true");
+    v4l2_info(sd, "STDI locked: %s\n", no_lock_stdi(sd) ? "false" : "true");
+    v4l2_info(sd, "CP locked: %s\n", no_lock_cp(sd) ? "false" : "true");
+    v4l2_info(sd, "CP free run: %s\n",
+        (in_free_run(sd)) ? "on" : "off");
+    v4l2_info(sd, "Prim-mode = 0x%x, video std = 0x%x, v_freq = 0x%x\n",
+        io_read(sd, 0x01) & 0x0f, io_read(sd, 0x00) & 0x3f,
+        (io_read(sd, 0x01) & 0x70) >> 4);
+#endif
+    static const char* s = "UNKNOWN";
+    switch (std) {
+    case V4L2_STD_NTSC: s = "NTSC";
+        break;
+    case V4L2_STD_NTSC_443: s = "NTSC443";
+        break;
+    case V4L2_STD_PAL_M: s = "PAL_M";
+        break;
+    case V4L2_STD_PAL_60: s = "PAL_60";
+        break;
+    case V4L2_STD_PAL: s = "PAL";
+        break;
+    case V4L2_STD_SECAM: s = "SECAM";
+        break;
+    case V4L2_STD_PAL_Nc: s = "PAL_CN";
+        break;
+    }
+    v4l2_info(sd, "Composite signal standard: %s\n", s);
 
 
-v4l2_info(sd, "-----Video Timings-----\n");
+    v4l2_info(sd, "-----Video Timings-----\n");
 #if 0
     if (read_stdi(sd, &stdi))
-		v4l2_info(sd, "STDI: not locked\n");
-	else
-		v4l2_info(sd, "STDI: lcf (frame height - 1) = %d, bl = %d, lcvs (vsync) = %d, %s, %chsync, %cvsync\n",
-				stdi.lcf, stdi.bl, stdi.lcvs,
-				stdi.interlaced ? "interlaced" : "progressive",
-				stdi.hs_pol, stdi.vs_pol);
-	if (adv76xx_query_dv_timings(sd, &timings))
-		v4l2_info(sd, "No video detected\n");
-	else
-		v4l2_print_dv_timings(sd->name, "Detected format: ",
-				      &timings, true);
-	v4l2_print_dv_timings(sd->name, "Configured format: ",
-			      &state->timings, true);
+        v4l2_info(sd, "STDI: not locked\n");
+    else
+        v4l2_info(sd, "STDI: lcf (frame height - 1) = %d, bl = %d, lcvs (vsync) = %d, %s, %chsync, %cvsync\n",
+            stdi.lcf, stdi.bl, stdi.lcvs,
+            stdi.interlaced ? "interlaced" : "progressive",
+            stdi.hs_pol, stdi.vs_pol);
+    if (tw9992_query_dv_timings(sd, &timings))
+        v4l2_info(sd, "No video detected\n");
+    else
+        v4l2_print_dv_timings(sd->name, "Detected format: ",
+            &timings, true);
+    v4l2_print_dv_timings(sd->name, "Configured format: ",
+        &state->timings, true);
 
-	if (no_signal(sd))
-		return 0;
+    if (no_signal(sd))
+        return 0;
 #endif
 
-	v4l2_info(sd, "-----Color space-----\n");
+    v4l2_info(sd, "-----Color space-----\n");
     v4l2_info(sd, "Output color space: %s\n",
         (state->fmt.code == tw9992_csi2_rgb_fmt.code) ? "RGB" : "YCbCr");
-	return 0;
+    return 0;
 }
 
 
@@ -819,18 +835,17 @@ static int tw9992_set_reg(struct v4l2_ctrl* ctrl) {
     return 0;
 }
 
-static int tw9992_g_ctrl(struct v4l2_ctrl *ctrl)
-{
-	//struct v4l2_subdev *sd = to_tw9992_sd(ctrl);
+static int tw9992_g_ctrl(struct v4l2_ctrl* ctrl) {
+    //struct v4l2_subdev *sd = to_tw9992_sd(ctrl);
     //struct tw9992_state* state = to_state(sd);
 // FIXME mutex lock
-	switch (ctrl->id) {
-	case V4L2_CID_STATUS:
-		return tw9992_get_status(ctrl);
-	case V4L2_CID_GET_REG:
-		return tw9992_get_reg(ctrl);
-	}
-	return -EINVAL;
+    switch (ctrl->id) {
+    case V4L2_CID_STATUS:
+        return tw9992_get_status(ctrl);
+    case V4L2_CID_GET_REG:
+        return tw9992_get_reg(ctrl);
+    }
+    return -EINVAL;
 }
 
 static int tw9992_s_ctrl(struct v4l2_ctrl* ctrl) {
@@ -872,11 +887,11 @@ static int tw9992_s_ctrl(struct v4l2_ctrl* ctrl) {
     case V4L2_CID_MUX:
         ret = tw9992_set_mux(ctrl);
         break;
-	case V4L2_CID_SET_REG:
-		ret = tw9992_set_reg(ctrl);
+    case V4L2_CID_SET_REG:
+        ret = tw9992_set_reg(ctrl);
         break;
-	case V4L2_CID_SET_ADDR:
-		state->hack_addr = ctrl->val;
+    case V4L2_CID_SET_ADDR:
+        state->hack_addr = ctrl->val;
         break;
     default:
         ret = -EINVAL;
@@ -888,7 +903,7 @@ unlock:
 }
 
 static const struct v4l2_ctrl_ops tw9992_ctrl_ops = {
-	.g_volatile_ctrl = tw9992_g_ctrl,
+    .g_volatile_ctrl = tw9992_g_ctrl,
     .s_ctrl = tw9992_s_ctrl,
 };
 
@@ -1091,13 +1106,26 @@ static int tw9992_init_cfg(struct v4l2_subdev* sd,
     struct tw9992_state* state = to_state(sd);
     int ret;
 
-    ret = tw9992_write(state, TW9992_REG_MIPICTL, 0x11);// FIXME MIPI, PAL
+    ret = tw9992_set_power(state, 1);
     if (ret)
         return ret;
+    state->powered = 1;
+    //ret = tw9992_write(state, TW9992_REG_MIPICTL, 0x11);// FIXME MIPI, PAL
     tw9992_write(state, TW9992_REG_MIPI_AN_CTL, 0x30);// MIPI ANALOG CTRL MISC
 
+    int width = state->fmt.width * 2;
+    tw9992_write(state, TW9992_REG_PICWIDTH, width >> 8);
+    tw9992_write(state, TW9992_REG_PICWIDTH_L, width & 0xff);
+    tw9992_write(state, TW9992_REG_WORD_CNT, width >> 8);
+    tw9992_write(state, TW9992_REG_WORD_CNT_L, width & 0xff);
+
+    // TODO TW9992_CROP_HEIGHT ?
+
     // Picture tuning
-    tw9992_write(state, TW9992_REG_HDELAY_LO, 1); // left border
+    tw9992_write(state, TW9992_REG_HDELAY_LO, TW9992_HDELAY); // left margin
+    tw9992_write(state, TW9992_REG_VDELAY_LO, TW9992_VDELAY); // top margin
+    
+
     tw9992_write(state, TW9992_REG_CNTRL1, 0xdc); // darker picture
     // TODO TW9992_REG_SHARPNESS, 0x11
 
@@ -1137,41 +1165,59 @@ static int tw9992_get_mbus_config(struct v4l2_subdev* sd,
     return 0;
 }
 
+
 #if 0
 static int tw9992_get_selection(struct v4l2_subdev* sd,
     struct v4l2_subdev_state* sd_state,
     struct v4l2_subdev_selection* sel) {
-#if 0
-    struct sensor* sensor = to_sensor(sd);
-
     switch (sel->target) {
-    case V4L2_SEL_TGT_CROP:
+    case V4L2_SEL_TGT_CROP: {
+        sel->r = *v4l2_subdev_get_pad_crop(sd, sd_state, 0);
+        return 0;
+    }
+
     case V4L2_SEL_TGT_NATIVE_SIZE:
-    case V4L2_SEL_TGT_CROP_DEFAULT:
         sel->r.top = 0;
         sel->r.left = 0;
-        sel->r.width = sensor->fmt.width;
-        sel->r.height = sensor->fmt.height;
+        sel->r.width = TW9992_MAX_WIDTH;
+        sel->r.height = TW9992_MAX_HEIGHT;
+
+        return 0;
+
+    case V4L2_SEL_TGT_CROP_DEFAULT:
+    case V4L2_SEL_TGT_CROP_BOUNDS:
+        sel->r.top = TW9992_CROP_TOP;
+        sel->r.left = TW9992_CROP_LEFT;
+        sel->r.width = TW9992_CROP_WIDTH;
+        sel->r.height = TW9992_CROP_HEIGHT;
 
         return 0;
     }
+
     return -EINVAL;
-#endif
     return 0;
 }
 
 static int tw9992_enum_frame_size(struct v4l2_subdev* sd,
     struct v4l2_subdev_state* sd_state,
     struct v4l2_subdev_frame_size_enum* fse) {
-    if (fse->index)
-        return -EINVAL;
-    if (fse->pad)
+    struct tw9992_state* state = to_state(sd);
+    u32 code;
+
+    if (fse->pad > 0)
         return -EINVAL;
 #if 0
-    fse->min_width = MIN_WIDTH;
-    fse->max_width = MAX_WIDTH;
-    fse->min_height = MIN_HEIGHT;
-    fse->max_height = MAX_HEIGHT;
+    if (fse->index >= ARRAY_SIZE(supported_modes))
+        return -EINVAL;
+
+    code = imx219_get_format_code(imx219, fse->code);
+    if (fse->code != code)
+        return -EINVAL;
+
+    fse->min_width = supported_modes[fse->index].width;
+    fse->max_width = fse->min_width;
+    fse->min_height = supported_modes[fse->index].height;
+    fse->max_height = fse->min_height;
 #endif
     return 0;
 }
@@ -1250,7 +1296,7 @@ static const struct v4l2_subdev_video_ops tw9992_video_ops = {
 };
 
 static const struct v4l2_subdev_core_ops tw9992_core_ops = {
-	.log_status = adv76xx_log_status,
+    .log_status = tw9992_log_status,
     .s_power = tw9992_s_power,
     .subscribe_event = tw9992_subscribe_event,
     .unsubscribe_event = v4l2_event_subdev_unsubscribe,
