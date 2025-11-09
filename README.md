@@ -22,7 +22,11 @@ There are special v4l controls "setaddr", "getreg" and "setreg". You can use the
 v4l2-ctl -c setaddr=0x03; v4l2-ctl -C getreg | sed 's/getreg:/obase=2;/' | bc
 1101001
 ```
+bc did not display value 0 on bit 7, meaning "0 = Video detected."
+
 Register 3 bits:
+| Bit | Description |
+| --- | ----------- |
 | 7 VDLOSS R | 1 = Video not present. (Sync is not detected in number of line periods specified by MISSCNT register) |
 | | 0 = Video detected. |
 | 6 HLOCK R | 1 = Horizontal sync PLL is locked to the incoming video source. |
@@ -38,7 +42,8 @@ Register 3 bits:
 | | 0 = Color burst signal detected. |
 | 0 DET50 R | 0 = 60Hz source detected |
 | | 1 = 50Hz source detected |
-For register info, get the datasheet.
+
+Get the datasheet for register info.
 
 Example module for Raspberry Pi:
 
