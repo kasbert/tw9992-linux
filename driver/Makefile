@@ -18,6 +18,7 @@ clean:
 
 install:
 	sudo make modules_install
+	sudo depmod -a
 	sudo cp -v tw9992.dtbo /boot/firmware/overlays/
 
 tw9992.dtbo: tw9992-overlay.dts

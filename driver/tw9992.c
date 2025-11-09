@@ -549,6 +549,7 @@ static int tw9992_g_std(struct v4l2_subdev* sd, v4l2_std_id* norm) {
 }
 
 static int tw9992_g_frame_interval(struct v4l2_subdev* sd,
+    struct v4l2_subdev_state* subdev_state,
     struct v4l2_subdev_frame_interval* fi) {
     struct tw9992_state* state = to_state(sd);
 
@@ -1062,7 +1063,7 @@ static int tw9992_get_pad_format(struct v4l2_subdev* sd,
         return -EINVAL;
 
     if (format->which == V4L2_SUBDEV_FORMAT_TRY) {
-        format->format = *v4l2_subdev_get_try_format(sd, sd_state, format->pad);
+        format->format = *v4l2_subdev_state_get_format(sd_state, format->pad);
     } else {
         format->format = state->fmt;
     }
@@ -1094,7 +1095,7 @@ static int tw9992_set_pad_format(struct v4l2_subdev* sd,
         }
 
     } else { // V4L2_SUBDEV_FORMAT_TRY
-        framefmt = v4l2_subdev_get_try_format(sd, sd_state, 0);
+        framefmt = v4l2_subdev_state_get_format(sd_state, 0);
         *framefmt = *mbus_fmt;
     }
 
@@ -1286,7 +1287,6 @@ static int tw9992_subscribe_event(struct v4l2_subdev* sd,
 static const struct v4l2_subdev_video_ops tw9992_video_ops = {
     .s_std = tw9992_s_std,
     .g_std = tw9992_g_std,
-    .g_frame_interval = tw9992_g_frame_interval,
     .querystd = tw9992_querystd,
     .g_input_status = tw9992_g_input_status,
     .s_routing = tw9992_s_routing,
@@ -1302,12 +1302,16 @@ static const struct v4l2_subdev_core_ops tw9992_core_ops = {
     .unsubscribe_event = v4l2_event_subdev_unsubscribe,
 };
 
+static const struct v4l2_subdev_internal_ops tw9992_internal_ops = {
+    .init_state = tw9992_init_cfg,
+};
+
 static const struct v4l2_subdev_pad_ops tw9992_pad_ops = {
-    .init_cfg = tw9992_init_cfg,
     .enum_mbus_code = tw9992_enum_mbus_code,
     .set_fmt = tw9992_set_pad_format,
     .get_fmt = tw9992_get_pad_format,
     .get_mbus_config = tw9992_get_mbus_config,
+    .get_frame_interval = tw9992_g_frame_interval,
     //.get_selection = tw9992_get_selection,
     //.enum_frame_size = tw9992_enum_frame_size,
 };
@@ -1464,6 +1468,7 @@ static int tw9992_probe(struct i2c_client* client) {
             ret, client->addr, client->adapter->name);
         goto err_v4l2_async_unregister;
     }
+    sd->internal_ops = &tw9992_internal_ops;
 
     v4l_info(client, "chip id 0x%x found @ 0x%02x (%s)\n",
         ret, client->addr, client->adapter->name);
@@ -1535,20 +1540,18 @@ static SIMPLE_DEV_PM_OPS(tw9992_pm_ops, tw9992_suspend, tw9992_resume);
 #define TW9992_PM_OPS NULL
 #endif
 
-#ifdef CONFIG_OF
 static const struct of_device_id tw9992_of_id[] = {
     {.compatible = "tw9992", },
     { },
 };
 
 MODULE_DEVICE_TABLE(of, tw9992_of_id);
-#endif
 
 static struct i2c_driver tw9992_driver = {
     .driver = {
            .name = KBUILD_MODNAME,
            .pm = TW9992_PM_OPS,
-           .of_match_table = of_match_ptr(tw9992_of_id),
+           .of_match_table = tw9992_of_id,
            },
     .probe = tw9992_probe,
     .remove = tw9992_remove,

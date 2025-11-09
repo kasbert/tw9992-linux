@@ -17,13 +17,13 @@
 #include <termios.h>
 
 #define USE_RGB 1
-#define USE_FILTER 1
-
+#define USE_FILTER 0
+#define DOUBLE 0
 
 #define CAM_WIDTH 680
 #define CAM_HEIGHT 576
 #ifdef USE_RGB
-#define CAM_FORMAT V4L2_PIX_FMT_RGB565 
+#define CAM_FORMAT V4L2_PIX_FMT_RGB565
 #else
 #define CAM_FORMAT V4L2_PIX_FMT_YVYU
 // (v4l2_fourcc('B','G','R','A'))
@@ -97,7 +97,7 @@ BITMAPINFOHEADER;
 static const uint32_t bitfields[4] = {
     0x0000F800, // red
     0x000007E0, // green
-    0x0000001F, // blue 
+    0x0000001F, // blue
     0 // reserved
 };
 
@@ -150,7 +150,7 @@ int savebitmap(int bytesperline, int width, int height, u_int8_t* data) {
         return -1;
     }
     for (int i = 0; i < height; i++) {
-        u_int16_t* src = data + bytesperline * i;
+        u_int8_t* src = data + bytesperline * i;
         if (fwrite(src, width * 2, 1, fp) != 1) {
             printf("Failed to write image\n");
             return -1;
@@ -162,6 +162,7 @@ int savebitmap(int bytesperline, int width, int height, u_int8_t* data) {
     return 0;
 }
 
+#if USE_FILTER
 static inline uint16_t median_of_five(uint16_t a, uint16_t b, uint16_t c, uint16_t d, uint16_t e) {
     return b < a ? d < c ? b < d ? a < e ? a < d ? e < d ? e : d
         : c < a ? c : a
@@ -196,9 +197,11 @@ static inline uint16_t median_of_five(uint16_t a, uint16_t b, uint16_t c, uint16
         : a < e ? b < e ? b : e
         : d < a ? d : a;
 }
+#endif
 
 #ifdef USE_RGB
 
+#if USE_FILTER
 static uint16_t lookup[65536];
 
 uint16_t colors_rgb[16] = {
@@ -253,6 +256,10 @@ static void init_lookup() {
         }
     }
 }
+#else
+static void init_lookup() {
+}
+#endif
 
 #else //YUV
 
@@ -482,8 +489,8 @@ static void show(struct decoder* dec, uint8_t* cam_buffer) {
     //memcpy(fb_p, cam_buffer, dec->fb_width*dec->fb_height*4);
 
     for (int i = 0; i < dec->cam_height; i++) {
-        u_int16_t* src = cam_buffer + dec->cam_bytesperline * i;
-        u_int16_t* dst = dec->fb_p + dec->fb_width * (i * 2 + (c & 1))* 2;
+        u_int16_t* src = (u_int16_t*)(cam_buffer + dec->cam_bytesperline * i);
+        u_int16_t* dst = (u_int16_t*)(dec->fb_p + dec->fb_width * (i * 2 + (c & 1))* 2);
 #ifdef USE_RGB
 #if USE_FILTER
 #if DOUBLE
@@ -580,13 +587,12 @@ int read_frame(struct decoder* dec) {
         fd_set fds;
         struct timeval tv;
         int r;
-    
-    
+
         FD_ZERO(&fds);
         FD_SET(dec->cam_fd, &fds);
         tv.tv_sec = 2;
         tv.tv_usec = 0;
-    
+
         r = select(dec->cam_fd + 1, &fds, NULL, NULL, &tv);
         if (r == -1) {
             if (errno = EINTR)
@@ -598,10 +604,10 @@ int read_frame(struct decoder* dec) {
             fprintf(stderr, "%s:%i: Call to select() timeout\n", __FILE__, __LINE__);
             continue;
         }
-    
+
         if (!FD_ISSET(dec->cam_fd, &fds))
             continue;
-    
+
         memset(&buffinfo, 0, sizeof(buffinfo));
         buffinfo.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         buffinfo.memory = V4L2_MEMORY_MMAP;
@@ -611,10 +617,10 @@ int read_frame(struct decoder* dec) {
             fprintf(stderr, "%s:%i: Unable to dequeue buffer\n", __FILE__, __LINE__);
             return -1;
         }
-    
+
         dec->cam_buffer_index = buffinfo.index;
         return 0;
-    }    
+    }
 }
 
 int free_frame(struct decoder* dec) {
