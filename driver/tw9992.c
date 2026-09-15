@@ -1466,6 +1466,7 @@ static int tw9992_probe(struct i2c_client* client) {
     if (ret != 0x92) {
         v4l_err(client, "invalid chip id 0x%x found @ 0x%02x (%s)\n",
             ret, client->addr, client->adapter->name);
+        ret = -ENODEV;
         goto err_v4l2_async_unregister;
     }
     sd->internal_ops = &tw9992_internal_ops;
